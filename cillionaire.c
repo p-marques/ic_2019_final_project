@@ -9,6 +9,10 @@
 #define MSG_BYE "*** Sad to see you go..."
 #define MSG_NOQUESTIONS "*** This is embarrassing but we're out of questions."
 #define MSG_NOFILE "No file provided. Please start the program with the argument -f [file name]."
+#define MSG_CORRECT "*** Hooray!"
+#define MSG_INCORRECT "*** Woops... That's not correct."
+#define MSG_YOUWIN "*** This is incredible! You have won!"
+#define MSG_YOULOSE "*** Sorry, you have lost the game. Bye!"
 
 enum category_enum {ent_books, ent_film, ent_music, ent_musicals, ent_tv, ent_vgames, ent_bgames, ent_comics, ent_anime, ent_cartoons, gen_knowledge, science_nature,
 science_gadgets, science_computers, science_math, mythology, sports, geography, history, politics, art, celebrities, animals, vehicles};
@@ -47,6 +51,7 @@ game_question get_question(link *, enum difficulty_enum);
 int rand_number(void);
 void start_new_game(Player *);
 char show_question(game_question *);
+bool handle_player_question_response(Player *, char *, char, char *);
 
 int main(int agrc, char **argv)
 {
@@ -124,8 +129,19 @@ int main(int agrc, char **argv)
                 if (!playing)
                     puts(MSG_UNKNOWN);
                 else
+                {
+                    active = handle_player_question_response(&current_player, &user_input, current_question_answer, current_question.answers[3 + (current_question_answer - 'D')]);
+                }
 
-                
+                if (active)
+                {
+                    current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
+                    current_question_answer = show_question(&current_question);
+                }
+
+                break;
+            case 'j':
+
                 break;
             default:
                 puts(MSG_UNKNOWN);
@@ -264,7 +280,7 @@ void write_question(FILE * file, link * last_question, char * question_line, int
         set_value_to_string_after_equal(line, tmp);
         working_question.diff = get_difficulty_enum_from_string(tmp);
     }
-    
+
     add_question(last_question, working_question, question_count);
 }
 
@@ -318,6 +334,9 @@ void start_new_game(Player * p)
     else
         trim_leading_white_space(p->name);
 
+    // Default last answer to true
+    p->last_answer = true;
+
     printf("*** Hi %s, let's get started!\n", p->name);
 }
 
@@ -349,19 +368,39 @@ char show_question(game_question * q)
     return (char)(65 + correct_answer_index);
 }
 
-void handle_player_question_response(Player * p, char * user_answer, char correct_answer)
+bool handle_player_question_response(Player * p, char * user_answer, char correct_answer, char * answer)
 {
-    if (user_answer == correct_answer)
+    bool keep_playing = true, player_is_correct = (*user_answer == correct_answer);
+
+    if (player_is_correct)
     {
+        puts(MSG_CORRECT);
         p->level_index++;
         p->last_answer = true;
     }
     else
     {
+        puts(MSG_INCORRECT);
+        printf("*** The correct answer was %c: %s\n", correct_answer, answer);
         p->level_index = p->level_index > 0 ? p->level_index - 1 : 0;
-        
-        if (p->)
+        keep_playing = p->last_answer;
+        p->last_answer = false;
     }
+
+    // player wins
+    if (p->level_index == 7)
+    {
+        puts(MSG_YOUWIN);
+        printf("*** Congratulations %s\n", p->name);
+        keep_playing = false;
+    }
+
+    if (!player_is_correct && !keep_playing)
+    {
+        puts(MSG_YOULOSE);
+    }
+
+    return keep_playing;
 }
 
 int rand_number(void)
