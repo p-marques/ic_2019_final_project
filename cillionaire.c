@@ -7,7 +7,7 @@
 
 #define MSG_UNKNOWN "Unknown option."
 #define MSG_BYE "*** Sad to see you go..."
-#define MSG_NOQUESTIONS "*** This is embarrassing but we're out of questions."
+#define MSG_NOQUESTIONS "*** This is embarrassing but we\u2019re out of questions."
 #define MSG_NOFILE "No file provided. Please start the program with the argument -f [file name]."
 #define MSG_CORRECT "*** Hooray!"
 #define MSG_INCORRECT "*** Woops... That's not correct."
@@ -61,6 +61,7 @@ void use_joker(Player *, game_question *, char);
 void save_game(Player *, link *, game_question *);
 void load_game(Player *, link *);
 bool string_starts_with(char *, char *);
+void flush(link *);
 
 int main(int agrc, char **argv)
 {
@@ -98,20 +99,10 @@ int main(int agrc, char **argv)
         srand(time(NULL));
     }
 
-    if (!file_provided)
-    {
-        puts(MSG_NOFILE);
-        return 0;
-    }
-    else
-    {
-        // Load questions
-        read_game_file(&current_player, file_name, &questions_link, false);
-    }
-
     print_menu();
     while (active)
     {
+        printf(">");
         scanf(" %c", &user_input);
 
         if(user_input == '\n')
@@ -134,6 +125,15 @@ int main(int agrc, char **argv)
                     puts(MSG_CANTSTART);
                 else
                 {
+                    if (file_provided)
+                    {
+                        read_game_file(&current_player, file_name, &questions_link, false);
+                    }
+                    else
+                    {
+                        puts(MSG_BYE);
+                        return 0;
+                    }
                     start_new_game(&current_player);
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
                     current_question_answer = show_question(&current_question, false);
@@ -189,6 +189,9 @@ int main(int agrc, char **argv)
                 puts(MSG_UNKNOWN);
                 break;
         }
+
+        if (!active && playing)
+            flush(&questions_link);
     }
 
 }
@@ -197,12 +200,7 @@ void trim_new_line(char * s1)
 {
 	const unsigned short length = strlen(s1);
 
-    if(string_starts_with(s1, "The internet domain .fm"))
-    {
-        puts(" ");
-    }
-
-	for (unsigned short i = 0; i < length; i++)
+    for (unsigned short i = 0; i < length; i++)
 	{
 		if (*(s1 + i) == '\n')
 		{
@@ -224,7 +222,7 @@ void trim_leading_white_space(char * s)
             break;
         }
     }
-    
+
     for (i = 0; i < length; i++)
     {
         s[i] = s[k];
@@ -272,7 +270,7 @@ void set_value_to_string_after_equal(char * phrase, char * value)
     char holder;
 	bool found_equal = false;
 	memset(value, 0, strlen(value));
-    
+
     for (unsigned short i = 0, j = 0; i < strlen(phrase) + 1; i++)
     {
         if (found_equal)
@@ -316,7 +314,7 @@ void write_question(FILE * file, link * last_question, char * question_line, int
             set_value_to_string_after_equal(line, working_question.answers[i]);
         }
     }
-    
+
     if(fgets(line, 256, file) != NULL)
     {
         trim_new_line(line);
@@ -332,7 +330,7 @@ void write_question(FILE * file, link * last_question, char * question_line, int
     {
         trim_new_line(line);
         set_value_to_string_after_equal(line, tmp);
-        
+
         if (save_flag)
             working_question.diff = atoi(tmp);
         else
@@ -427,7 +425,7 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool sa
 
 void start_new_game(Player * p)
 {
-    char default_name[] = "newbie";
+    char default_name[] = "Newbie";
 
     fgets(p->name, 20, stdin);
     trim_new_line(p->name);
@@ -446,12 +444,13 @@ void start_new_game(Player * p)
     p->level_index = 0;
 
     printf("*** Hi %s, let's get started!\n", p->name);
+    print_player_status(p, 0);
 }
 
 void move_correct_answer(game_question * q, int correct_answer_index)
 {
     char tmp[64];
-    
+
     strcpy(tmp, q->answers[0]);
     for (short i = 0; i < correct_answer_index; i++)
     {
@@ -487,9 +486,6 @@ bool handle_player_question_response(Player * p, int * levels, char * user_answe
         puts(MSG_CORRECT);
         p->level_index++;
         p->last_answer = true;
-
-        if (p->level_index < 8)
-            print_player_status(p, levels[p->level_index]);
     }
     else
     {
@@ -507,6 +503,11 @@ bool handle_player_question_response(Player * p, int * levels, char * user_answe
         printf("*** Congratulations %s\n", p->name);
         keep_playing = false;
     }
+    else
+    {
+        print_player_status(p, levels[p->level_index]);
+    }
+
 
     if (!player_is_correct && !keep_playing)
     {
@@ -525,7 +526,7 @@ int count_answers(game_question * q)
         if ( strlen(q->answers[i]) > 0 )
             count++;
     }
-    
+
     return count;
 }
 
@@ -660,14 +661,20 @@ void print_player_status(Player * p, int level)
         if ( i == holder - 2 )
             puts("*");
     }
-    
+
     printf("*** Level: %d", level);
 
     holder = 44 - 11;
-    while (level != 0)
-    {
-        level /= 10;
+
+    if (level == 0)
         holder--;
+    else
+    {
+        while (level != 0)
+        {
+            level /= 10;
+            holder--;
+        }
     }
 
     for (unsigned short i = 0; i < holder - 1; i++)
@@ -692,7 +699,7 @@ void print_credits(void)
 void print_menu(void)
 {
     puts("********************************************");
-    puts("***             CILLIONAIRE                *");
+    puts("***              CILLIONAIRE               *");
     puts("********************************************");
     puts("*** n <name>     - new game                *");
     puts("*** q            - quit                    *");
@@ -746,10 +753,10 @@ game_question get_question(link * questions, enum difficulty_enum diff)
             if (aux ->next != NULL)
                 aux->next->previous = aux->previous;
 
-            // If aux->previous == NULL --> removing first element 
+            // If aux->previous == NULL --> removing first element
             if (aux->previous == NULL)
                 *questions = aux->next;
-            
+
             found = true;
             break;
         }
@@ -765,4 +772,21 @@ game_question get_question(link * questions, enum difficulty_enum diff)
         puts(MSG_NOQUESTIONS);
         exit(0);
     }
+}
+
+void flush(link * questions_link)
+{
+    int counter = 0;
+    link aux = *questions_link;
+    link holder;
+
+    while (aux != NULL)
+    {
+        holder = aux->next;
+        free(aux);
+        aux = holder;
+        counter++;
+    }
+
+    printf("Cleaned %d\n", counter);
 }
