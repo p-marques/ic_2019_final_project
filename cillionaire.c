@@ -272,7 +272,7 @@ void set_value_to_string_after_equal(char * phrase, char * value)
 {
     char holder;
 	bool found_equal = false;
-	memset(value, 0, strlen(value));
+    value[0] = '\0';
 
     for (unsigned short i = 0, j = 0; i < strlen(phrase) + 1; i++)
     {
@@ -436,7 +436,7 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool sa
 	}
 
     // DEBUG
-    printf("Found %d questions!\n", question_count);
+    // printf("Found %d questions!\n", question_count);
 
 	fclose(f);
 }
