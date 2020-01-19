@@ -60,6 +60,7 @@ bool handle_player_question_response(Player *, int *, char *, char, char *);
 void use_joker(Player *, game_question *, char);
 void save_game(Player *, link *, game_question *);
 void load_game(Player *, link *);
+bool string_starts_with(char *, char *);
 
 int main(int agrc, char **argv)
 {
@@ -173,12 +174,14 @@ int main(int agrc, char **argv)
                 }
                 break;
             case 'r':
-                if (!playing)
+                if (playing)
                     puts(MSG_UNKNOWN);
                 else
                 {
                     load_game(&current_player, &questions_link);
                     print_player_status(&current_player, levels[current_player.level_index]);
+                    current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
+                    current_question_answer = show_question(&current_question, true);
                     playing = true;
                 }
                 break;
@@ -193,6 +196,11 @@ int main(int agrc, char **argv)
 void trim_new_line(char * s1)
 {
 	const unsigned short length = strlen(s1);
+
+    if(string_starts_with(s1, "The internet domain .fm"))
+    {
+        puts(" ");
+    }
 
 	for (unsigned short i = 0; i < length; i++)
 	{
@@ -261,13 +269,16 @@ enum category_enum get_category_enum_from_string(char * s)
 
 void set_value_to_string_after_equal(char * phrase, char * value)
 {
+    char holder;
 	bool found_equal = false;
 	memset(value, 0, strlen(value));
-	for (unsigned short i = 0, j = 0; i < strlen(phrase); i++)
+    
+    for (unsigned short i = 0, j = 0; i < strlen(phrase) + 1; i++)
     {
         if (found_equal)
         {
-            *(value + j) = *(phrase + i);
+            holder = *(phrase + i);
+            *(value + j) = holder;
             j++;
         }
         else if (*(phrase + i) == '=')
@@ -289,7 +300,7 @@ bool string_starts_with(char * string, char * value)
     return true;
 }
 
-void write_question(FILE * file, link * last_question, char * question_line, int question_count)
+void write_question(FILE * file, link * last_question, char * question_line, int question_count, bool save_flag)
 {
     char line[256], tmp[128];
     game_question working_question;
@@ -310,14 +321,22 @@ void write_question(FILE * file, link * last_question, char * question_line, int
     {
         trim_new_line(line);
         set_value_to_string_after_equal(line, tmp);
-        working_question.ctg = get_category_enum_from_string(tmp);
+
+        if (save_flag)
+            working_question.ctg = atoi(tmp);
+        else
+            working_question.ctg = get_category_enum_from_string(tmp);
     }
 
     if(fgets(line, 256, file) != NULL)
     {
         trim_new_line(line);
         set_value_to_string_after_equal(line, tmp);
-        working_question.diff = get_difficulty_enum_from_string(tmp);
+        
+        if (save_flag)
+            working_question.diff = atoi(tmp);
+        else
+            working_question.diff = get_difficulty_enum_from_string(tmp);
     }
 
     add_question(last_question, working_question, question_count);
@@ -363,7 +382,7 @@ void write_player(FILE * file, Player * p, char * name_line)
     }
 }
 
-void read_game_file(Player * p, char * file_name, link * questions_link, bool read_player_info)
+void read_game_file(Player * p, char * file_name, link * questions_link, bool save_flag)
 {
     unsigned int question_count = 0;
 	char line[256];
@@ -384,13 +403,13 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool re
 			{
 				continue;
 			}
-            else if (string_starts_with(line, "Player_Name") && read_player_info)
+            else if (string_starts_with(line, "Player_Name") && save_flag)
             {
                 write_player(f, p, line);
             }
             else if (string_starts_with(line, "QUESTION"))
             {
-                write_question(f, &last_question, line, question_count);
+                write_question(f, &last_question, line, question_count, save_flag);
                 if (question_count == 0)
                 {
                     *questions_link = last_question;
@@ -399,6 +418,9 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool re
             }
 		}
 	}
+
+    // DEBUG
+    printf("Found %d questions!\n", question_count);
 
 	fclose(f);
 }
@@ -564,7 +586,7 @@ void load_game(Player * p, link * questions_link)
     trim_leading_white_space(file_name);
 
     read_game_file(p, file_name, questions_link, true);
-    printf("***  Ok %s, where were we? Oh there you go:", p->name);
+    printf("***  Ok %s, where were we? Oh there you go:\n", p->name);
 }
 
 void save_game(Player * p, link * questions, game_question * current_question)
