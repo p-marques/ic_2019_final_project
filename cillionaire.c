@@ -13,6 +13,9 @@
 #define MSG_INCORRECT "*** Woops... That's not correct."
 #define MSG_YOUWIN "*** This is incredible! You have won!"
 #define MSG_YOULOSE "*** Sorry, you have lost the game. Bye!"
+#define MSG_ILLEGALMOVE "*** Illegal move"
+#define MSG_CANTSTART "*** Can't start a new game because one is already underway."
+#define MSG_SAVEDGAME "*** Ok, your progress has been saved. See you later!"
 
 enum category_enum {ent_books, ent_film, ent_music, ent_musicals, ent_tv, ent_vgames, ent_bgames, ent_comics, ent_anime, ent_cartoons, gen_knowledge, science_nature,
 science_gadgets, science_computers, science_math, mythology, sports, geography, history, politics, art, celebrities, animals, vehicles};
@@ -36,13 +39,15 @@ typedef struct _node {
 typedef struct _node * link;
 
 typedef struct {
-    char name[50];
+    char name[20];
     bool j50, j25;
     short level_index;
     bool last_answer;
 } Player;
 
 void print_menu(void);
+void print_credits(void);
+void print_player_status(Player *, int);
 int rand_number(void);
 void read_questions_file(char *, link *);
 bool play(Player *, link *, int *, short *);
@@ -50,8 +55,11 @@ int add_question(link *, game_question, int);
 game_question get_question(link *, enum difficulty_enum);
 int rand_number(void);
 void start_new_game(Player *);
-char show_question(game_question *);
-bool handle_player_question_response(Player *, char *, char, char *);
+char show_question(game_question *, bool);
+bool handle_player_question_response(Player *, int *, char *, char, char *);
+void use_joker(Player *, game_question *, char);
+void save_game(Player *, link *, game_question *);
+void load_game(Player *, link *);
 
 int main(int agrc, char **argv)
 {
@@ -116,11 +124,19 @@ int main(int agrc, char **argv)
             case 'h':
                 print_menu();
                 break;
+            case 'c':
+                print_credits();
+                break;
             case 'n':
-                start_new_game(&current_player);
-                current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                current_question_answer = show_question(&current_question);
-                playing = true;
+                if (playing)
+                    puts(MSG_CANTSTART);
+                else
+                {
+                    start_new_game(&current_player);
+                    current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
+                    current_question_answer = show_question(&current_question, false);
+                    playing = true;
+                }
                 break;
             case 'A':
             case 'B':
@@ -130,18 +146,39 @@ int main(int agrc, char **argv)
                     puts(MSG_UNKNOWN);
                 else
                 {
-                    active = handle_player_question_response(&current_player, &user_input, current_question_answer, current_question.answers[3 + (current_question_answer - 'D')]);
+                    active = handle_player_question_response(&current_player, levels, &user_input, current_question_answer, current_question.answers[3 + (current_question_answer - 'D')]);
                 }
 
                 if (active)
                 {
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                    current_question_answer = show_question(&current_question);
+                    current_question_answer = show_question(&current_question, false);
                 }
 
                 break;
             case 'j':
-
+                if (!playing)
+                    puts(MSG_UNKNOWN);
+                else
+                    use_joker(&current_player, &current_question, current_question_answer);
+                break;
+            case 's':
+                if (!playing)
+                    puts(MSG_UNKNOWN);
+                else
+                {
+                    save_game(&current_player, &questions_link, &current_question);
+                    active = false;
+                }
+                break;
+            case 'r':
+                if (!playing)
+                    puts(MSG_UNKNOWN);
+                else
+                {
+                    // load
+                    playing = false;
+                }
                 break;
             default:
                 puts(MSG_UNKNOWN);
@@ -324,7 +361,7 @@ void start_new_game(Player * p)
 {
     char default_name[] = "newbie";
 
-    fgets(p->name, 50, stdin);
+    fgets(p->name, 20, stdin);
     trim_new_line(p->name);
     if(strlen(&(*p->name)) == 0)
     {
@@ -334,8 +371,11 @@ void start_new_game(Player * p)
     else
         trim_leading_white_space(p->name);
 
-    // Default last answer to true
+    // Defaults
     p->last_answer = true;
+    p->j25 = true;
+    p->j50 = true;
+    p->level_index = 0;
 
     printf("*** Hi %s, let's get started!\n", p->name);
 }
@@ -353,22 +393,24 @@ void move_correct_answer(game_question * q, int correct_answer_index)
     strcpy(q->answers[correct_answer_index], tmp);
 }
 
-char show_question(game_question * q)
+char show_question(game_question * q, bool answers_only)
 {
     int correct_answer_index = rand_number();
     move_correct_answer(q, correct_answer_index);
 
-    printf("*** Question: %s\n", q->question);
+    if (!answers_only)
+        printf("*** Question: %s\n", q->question);
 
     for (short i = 0, k = 65; i < 4; i++, k++)
     {
-        printf("*** %c: %s\n", (char)k, q->answers[i]);
+        if (strlen(q->answers[i]) > 0)
+            printf("*** %c: %s\n", (char)k, q->answers[i]);
     }
 
     return (char)(65 + correct_answer_index);
 }
 
-bool handle_player_question_response(Player * p, char * user_answer, char correct_answer, char * answer)
+bool handle_player_question_response(Player * p, int * levels, char * user_answer, char correct_answer, char * answer)
 {
     bool keep_playing = true, player_is_correct = (*user_answer == correct_answer);
 
@@ -377,6 +419,9 @@ bool handle_player_question_response(Player * p, char * user_answer, char correc
         puts(MSG_CORRECT);
         p->level_index++;
         p->last_answer = true;
+
+        if (p->level_index < 8)
+            print_player_status(p, levels[p->level_index]);
     }
     else
     {
@@ -388,7 +433,7 @@ bool handle_player_question_response(Player * p, char * user_answer, char correc
     }
 
     // player wins
-    if (p->level_index == 7)
+    if (p->level_index == 8)
     {
         puts(MSG_YOUWIN);
         printf("*** Congratulations %s\n", p->name);
@@ -403,9 +448,182 @@ bool handle_player_question_response(Player * p, char * user_answer, char correc
     return keep_playing;
 }
 
+int count_answers(game_question * q)
+{
+    short count = 0;
+
+    for (unsigned short i = 0; i < 4; i++)
+    {
+        if ( strlen(q->answers[i]) > 0 )
+            count++;
+    }
+    
+    return count;
+}
+
+void remove_answers(game_question * q, int correct_index, short number_of_answers_to_remove)
+{
+    int r = 0;
+
+    while ( number_of_answers_to_remove > 0 )
+    {
+        r = rand_number();
+
+        // don't remove the correct answer
+        if ( r != correct_index )
+        {
+            for (short i = 0; i < 4; i++)
+            {
+                if (i == r)
+                {
+                    q->answers[i][0] = '\0';
+                    number_of_answers_to_remove--;
+                }
+            }
+        }
+    }
+}
+
+void use_joker(Player * p, game_question * q, char correct_answer)
+{
+    char buffer[40];
+    int buffer_n, correct_index = 3 + (correct_answer - 'D');
+
+    fgets(buffer, 40, stdin);
+    trim_new_line(buffer);
+    trim_leading_white_space(buffer);
+    buffer_n = atoi(buffer);
+
+    // Illegal moves
+    if ((count_answers(q) < 4) || (buffer_n == 50 && !p->j50) || (buffer_n == 25 && !p->j25))
+    {
+        puts(MSG_ILLEGALMOVE);
+        return;
+    }
+
+    remove_answers(q, correct_index, buffer_n == 50 ? 2 : 1);
+
+    p->j50 = buffer_n == 50 ? false : p->j50;
+    p->j25 = buffer_n == 25 ? false : p->j25;
+
+    show_question(q, true);
+}
+
+void load_game(Player * p, link * questions)
+{
+    FILE * file;
+    char file_name[40];
+
+    fgets(file_name, 40, stdin);
+    trim_new_line(file_name);
+    trim_leading_white_space(file_name);
+
+    file = fopen(file_name, "r");
+    if (file == NULL)
+	{
+		fprintf(stdout, "*** Não foi possivel abrir o ficheiro %s.", file_name);
+		exit(1);
+	}
+}
+
+void save_game(Player * p, link * questions, game_question * current_question)
+{
+    FILE * file;
+    char file_name[40];
+    link aux;
+
+    fgets(file_name, 40, stdin);
+    trim_new_line(file_name);
+    trim_leading_white_space(file_name);
+
+    file = fopen(file_name, "w");
+    if (file == NULL)
+	{
+		fprintf(stdout, "*** Não foi possivel abrir o ficheiro %s.", file_name);
+		exit(1);
+	}
+
+    // Player Info
+    fputs(";Player Status\n", file);
+    fprintf(file, "Player_Name=%s\n", p->name);
+    fprintf(file, "Player_Level_Index=%d\n", p->level_index);
+    fprintf(file, "Player_J50=%d\n", p->j50);
+    fprintf(file, "Player_J25=%d\n", p->j25);
+    fprintf(file, "Player_Last_Question=%d\n", p->last_answer);
+
+    // Current question
+    fputs(";Questions\n", file);
+    fprintf(file, "QUESTION=%s\n", current_question->question);
+    for (unsigned short i = 0; i < 4; i++)
+    {
+        fprintf(file, "OPTION%d=%s\n", i, current_question->answers[i]);
+    }
+    fprintf(file, "CATEGORY=%d\n", current_question->ctg);
+    fprintf(file, "DIFFICULTY=%d\n", current_question->diff);
+
+    // All the other questions
+    for (aux = *questions; aux != NULL ; aux = aux->next)
+    {
+        fprintf(file, "QUESTION=%s\n", aux->q.question);
+        for (unsigned short i = 0; i < 4; i++)
+        {
+            fprintf(file, "OPTION%d=%s\n", i, aux->q.answers[i]);
+        }
+        fprintf(file, "CATEGORY=%d\n", aux->q.ctg);
+        fprintf(file, "DIFFICULTY=%d\n", aux->q.diff);
+    }
+
+    puts(MSG_SAVEDGAME);
+    fclose(file);
+}
+
 int rand_number(void)
 {
     return (rand() % 4);
+}
+
+void print_player_status(Player * p, int level)
+{
+    int holder;
+    char yes[] = "YES                             *";
+    char no[] = "NO                              *";
+
+    puts("********************************************");
+    printf("*** Name:  %s", p->name);
+    holder = 44 - 11 - strlen(p->name);
+    for (unsigned short i = 0; i < holder - 1; i++)
+    {
+        printf("%c", ' ');
+        if ( i == holder - 2 )
+            puts("*");
+    }
+    
+    printf("*** Level: %d", level);
+
+    holder = 44 - 11;
+    while (level != 0)
+    {
+        level /= 10;
+        holder--;
+    }
+
+    for (unsigned short i = 0; i < holder - 1; i++)
+    {
+        printf("%c", ' ');
+        if ( i == holder - 2 )
+            puts("*");
+    }
+
+    printf("*** j50:   %s\n", p->j50 == true ? yes : no);
+    printf("*** j25:   %s\n", p->j25 == true ? yes : no);
+    puts("********************************************");
+}
+
+void print_credits(void)
+{
+    puts("****************************************");
+    puts("*** Developer: Pedro \"pMarK\" Marques *");
+    puts("****************************************");
 }
 
 void print_menu(void)
@@ -449,20 +667,39 @@ int add_question(link * last_question, game_question q, int question_count)
 
 game_question get_question(link * questions, enum difficulty_enum diff)
 {
+    bool found = false;
     game_question x;
+    link aux;
 
-    for (link aux = *questions; aux != NULL; aux = aux->next)
+    for (aux = *questions; aux != NULL; aux = aux->next)
     {
         if (aux->q.diff == diff)
         {
             x = aux->q;
-            aux->previous->next = aux->next;
 
-            free(aux);
-            return x;
+            // Patching link
+            if (aux->previous != NULL)
+                aux->previous->next = aux->next;
+            if (aux ->next != NULL)
+                aux->next->previous = aux->previous;
+
+            // If aux->previous == NULL --> removing first element 
+            if (aux->previous == NULL)
+                *questions = aux->next;
+            
+            found = true;
+            break;
         }
     }
 
-    puts(MSG_NOQUESTIONS);
-    exit(0);
+    if (found)
+    {
+        free(aux);
+        return x;
+    }
+    else
+    {
+        puts(MSG_NOQUESTIONS);
+        exit(0);
+    }
 }
