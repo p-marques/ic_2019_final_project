@@ -57,7 +57,7 @@ int rand_number(void);
 void start_new_game(Player *);
 char show_question(game_question *, bool);
 bool handle_player_question_response(Player *, int *, char *, char, char *);
-void use_joker(Player *, game_question *, char);
+void use_joker(Player *, game_question *, char *);
 void save_game(Player *, link *, game_question *);
 void load_game(Player *, link *);
 bool string_starts_with(char *, char *);
@@ -162,7 +162,7 @@ int main(int agrc, char **argv)
                 if (!playing)
                     puts(MSG_UNKNOWN);
                 else
-                    use_joker(&current_player, &current_question, current_question_answer);
+                    use_joker(&current_player, &current_question, &current_question_answer);
                 break;
             case 's':
                 if (!playing)
@@ -532,20 +532,21 @@ int count_answers(game_question * q)
 
 void remove_answers(game_question * q, int correct_index, short number_of_answers_to_remove)
 {
-    int r = 0;
+    int r = 0, already_removed = -1;
 
     while ( number_of_answers_to_remove > 0 )
     {
         r = rand_number();
 
         // don't remove the correct answer
-        if ( r != correct_index )
+        if ( r != correct_index && r != already_removed )
         {
             for (short i = 0; i < 4; i++)
             {
                 if (i == r)
                 {
                     q->answers[i][0] = '\0';
+                    already_removed = i;
                     number_of_answers_to_remove--;
                 }
             }
@@ -553,10 +554,10 @@ void remove_answers(game_question * q, int correct_index, short number_of_answer
     }
 }
 
-void use_joker(Player * p, game_question * q, char correct_answer)
+void use_joker(Player * p, game_question * q, char * correct_answer)
 {
     char buffer[40];
-    int buffer_n, correct_index = 3 + (correct_answer - 'D');
+    int buffer_n, correct_index = 3 + (*correct_answer - 'D');
 
     fgets(buffer, 40, stdin);
     trim_new_line(buffer);
@@ -575,7 +576,11 @@ void use_joker(Player * p, game_question * q, char correct_answer)
     p->j50 = buffer_n == 50 ? false : p->j50;
     p->j25 = buffer_n == 25 ? false : p->j25;
 
-    show_question(q, true);
+    for (short i = 0, k = 65; i < 4; i++, k++)
+    {
+        if (strlen(q->answers[i]) > 0)
+            printf("*** %c: %s\n", (char)k, q->answers[i]);
+    }
 }
 
 void load_game(Player * p, link * questions_link)
