@@ -49,7 +49,7 @@ void print_menu(void);
 void print_credits(void);
 void print_player_status(Player *, int);
 int rand_number(void);
-void read_questions_file(char *, link *);
+void read_game_file(Player *, char *, link *, bool);
 bool play(Player *, link *, int *, short *);
 int add_question(link *, game_question, int);
 game_question get_question(link *, enum difficulty_enum);
@@ -104,7 +104,8 @@ int main(int agrc, char **argv)
     }
     else
     {
-        read_questions_file(file_name, &questions_link);
+        // Load questions
+        read_game_file(&current_player, file_name, &questions_link, false);
     }
 
     print_menu();
@@ -176,8 +177,9 @@ int main(int agrc, char **argv)
                     puts(MSG_UNKNOWN);
                 else
                 {
-                    // load
-                    playing = false;
+                    load_game(&current_player, &questions_link);
+                    print_player_status(&current_player, levels[current_player.level_index]);
+                    playing = true;
                 }
                 break;
             default:
@@ -321,7 +323,47 @@ void write_question(FILE * file, link * last_question, char * question_line, int
     add_question(last_question, working_question, question_count);
 }
 
-void read_questions_file(char * file_name, link * questions_link)
+void write_player(FILE * file, Player * p, char * name_line)
+{
+    char line[256], tmp[128];
+
+    trim_new_line(name_line);
+    set_value_to_string_after_equal(name_line, p->name);
+
+    if (fgets(line, 256, file) != NULL)
+    {
+        trim_new_line(line);
+        set_value_to_string_after_equal(line, tmp);
+
+        p->level_index = atoi(tmp);
+    }
+
+    if (fgets(line, 256, file) != NULL)
+    {
+        trim_new_line(line);
+        set_value_to_string_after_equal(line, tmp);
+
+        p->j50 = atoi(tmp);
+    }
+
+    if (fgets(line, 256, file) != NULL)
+    {
+        trim_new_line(line);
+        set_value_to_string_after_equal(line, tmp);
+
+        p->j25 = atoi(tmp);
+    }
+
+    if (fgets(line, 256, file) != NULL)
+    {
+        trim_new_line(line);
+        set_value_to_string_after_equal(line, tmp);
+
+        p->last_answer = atoi(tmp);
+    }
+}
+
+void read_game_file(Player * p, char * file_name, link * questions_link, bool read_player_info)
 {
     unsigned int question_count = 0;
 	char line[256];
@@ -342,6 +384,10 @@ void read_questions_file(char * file_name, link * questions_link)
 			{
 				continue;
 			}
+            else if (string_starts_with(line, "Player_Name") && read_player_info)
+            {
+                write_player(f, p, line);
+            }
             else if (string_starts_with(line, "QUESTION"))
             {
                 write_question(f, &last_question, line, question_count);
@@ -509,21 +555,16 @@ void use_joker(Player * p, game_question * q, char correct_answer)
     show_question(q, true);
 }
 
-void load_game(Player * p, link * questions)
+void load_game(Player * p, link * questions_link)
 {
-    FILE * file;
     char file_name[40];
 
     fgets(file_name, 40, stdin);
     trim_new_line(file_name);
     trim_leading_white_space(file_name);
 
-    file = fopen(file_name, "r");
-    if (file == NULL)
-	{
-		fprintf(stdout, "*** Não foi possivel abrir o ficheiro %s.", file_name);
-		exit(1);
-	}
+    read_game_file(p, file_name, questions_link, true);
+    printf("***  Ok %s, where were we? Oh there you go:", p->name);
 }
 
 void save_game(Player * p, link * questions, game_question * current_question)
