@@ -16,6 +16,7 @@
 #define MSG_ILLEGALMOVE "*** Illegal move"
 #define MSG_CANTSTART "*** Can't start a new game because one is already underway."
 #define MSG_SAVEDGAME "*** Ok, your progress has been saved. See you later!"
+#define MSG_CANTSAVE "*** No game is underway so can't save!"
 
 enum category_enum {ent_books, ent_film, ent_music, ent_musicals, ent_tv, ent_vgames, ent_bgames, ent_comics, ent_anime, ent_cartoons, gen_knowledge, science_nature,
 science_gadgets, science_computers, science_math, mythology, sports, geography, history, politics, art, celebrities, animals, vehicles};
@@ -28,6 +29,7 @@ typedef struct
     char answers[4][64];
     enum category_enum ctg;
     enum difficulty_enum diff;
+    int correct_answer_index;
 } game_question;
 
 typedef struct _node {
@@ -55,9 +57,9 @@ int add_question(link *, game_question, int);
 game_question get_question(link *, enum difficulty_enum);
 int rand_number(void);
 void start_new_game(Player *);
-char show_question(game_question *, bool);
-bool handle_player_question_response(Player *, int *, char *, char, char *);
-void use_joker(Player *, game_question *, char *);
+void show_question(game_question *, bool);
+bool handle_player_question_response(Player *, game_question *, int *, char *);
+void use_joker(Player *, game_question *);
 void save_game(Player *, link *, game_question *);
 void load_game(Player *, link *);
 bool string_starts_with(char *, char *);
@@ -72,7 +74,6 @@ int main(int agrc, char **argv)
     Player current_player;
     link questions_link;
     game_question current_question;
-    char current_question_answer;
 
     if(agrc > 1)
     {
@@ -136,7 +137,7 @@ int main(int agrc, char **argv)
                     }
                     start_new_game(&current_player);
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                    current_question_answer = show_question(&current_question, false);
+                    show_question(&current_question, true);
                     playing = true;
                 }
                 break;
@@ -148,13 +149,13 @@ int main(int agrc, char **argv)
                     puts(MSG_UNKNOWN);
                 else
                 {
-                    active = handle_player_question_response(&current_player, levels, &user_input, current_question_answer, current_question.answers[3 + (current_question_answer - 'D')]);
+                    active = handle_player_question_response(&current_player, &current_question, levels, &user_input);
                 }
 
                 if (active)
                 {
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                    current_question_answer = show_question(&current_question, false);
+                    show_question(&current_question, true);
                 }
 
                 break;
@@ -162,16 +163,18 @@ int main(int agrc, char **argv)
                 if (!playing)
                     puts(MSG_UNKNOWN);
                 else
-                    use_joker(&current_player, &current_question, &current_question_answer);
+                    use_joker(&current_player, &current_question);
                 break;
             case 's':
-                if (!playing)
-                    puts(MSG_UNKNOWN);
-                else
-                {
-                    save_game(&current_player, &questions_link, &current_question);
-                    active = false;
-                }
+                    if(playing)
+                    {
+                        save_game(&current_player, &questions_link, &current_question);
+                        active = false;
+                    }
+                    else
+                    {
+                        puts(MSG_CANTSAVE);
+                    }
                 break;
             case 'r':
                 if (playing)
@@ -181,7 +184,7 @@ int main(int agrc, char **argv)
                     load_game(&current_player, &questions_link);
                     print_player_status(&current_player, levels[current_player.level_index]);
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                    current_question_answer = show_question(&current_question, true);
+                    show_question(&current_question, false);
                     playing = true;
                 }
                 break;
@@ -306,6 +309,9 @@ void write_question(FILE * file, link * last_question, char * question_line, int
     trim_new_line(question_line);
     set_value_to_string_after_equal(question_line, working_question.question);
 
+    // Defaulting to 0
+    working_question.correct_answer_index = 0;
+
     for (unsigned short i = 0; i < 4; i++)
     {
         if(fgets(line, 256, file) != NULL)
@@ -337,10 +343,22 @@ void write_question(FILE * file, link * last_question, char * question_line, int
             working_question.diff = get_difficulty_enum_from_string(tmp);
     }
 
+    if (save_flag && question_count == 0)
+    {
+        if(fgets(line, 256, file) != NULL)
+        {
+            trim_new_line(line);
+            set_value_to_string_after_equal(line, tmp);
+
+            working_question.correct_answer_index = atoi(tmp);
+        }
+    }
+
+
     add_question(last_question, working_question, question_count);
 }
 
-void write_player(FILE * file, Player * p, char * name_line)
+void write_player_details(FILE * file, Player * p, char * name_line)
 {
     char line[256], tmp[128];
 
@@ -403,7 +421,7 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool sa
 			}
             else if (string_starts_with(line, "Player_Name") && save_flag)
             {
-                write_player(f, p, line);
+                write_player_details(f, p, line);
             }
             else if (string_starts_with(line, "QUESTION"))
             {
@@ -418,7 +436,7 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool sa
 	}
 
     // DEBUG
-    // printf("Found %d questions!\n", question_count);
+    printf("Found %d questions!\n", question_count);
 
 	fclose(f);
 }
@@ -460,26 +478,29 @@ void move_correct_answer(game_question * q, int correct_answer_index)
     strcpy(q->answers[correct_answer_index], tmp);
 }
 
-char show_question(game_question * q, bool answers_only)
+void show_question(game_question * q, bool shuffle_correct_answer)
 {
-    int correct_answer_index = rand_number();
-    move_correct_answer(q, correct_answer_index);
+    int correct_answer_index = 0;
 
-    if (!answers_only)
-        printf("*** Question: %s\n", q->question);
+    if (shuffle_correct_answer)
+    {
+        correct_answer_index = rand_number();
+        move_correct_answer(q, correct_answer_index);
+        q->correct_answer_index = correct_answer_index;
+    }
+
+    printf("*** Question: %s\n", q->question);
 
     for (short i = 0, k = 65; i < 4; i++, k++)
     {
         if (strlen(q->answers[i]) > 0)
             printf("*** %c: %s\n", (char)k, q->answers[i]);
     }
-
-    return (char)(65 + correct_answer_index);
 }
 
-bool handle_player_question_response(Player * p, int * levels, char * user_answer, char correct_answer, char * answer)
+bool handle_player_question_response(Player * p, game_question * q, int * levels, char * user_answer)
 {
-    bool keep_playing = true, player_is_correct = (*user_answer == correct_answer);
+    bool keep_playing = true, player_is_correct = (3 + (*user_answer - 'D') == q->correct_answer_index);
 
     if (player_is_correct)
     {
@@ -490,7 +511,7 @@ bool handle_player_question_response(Player * p, int * levels, char * user_answe
     else
     {
         puts(MSG_INCORRECT);
-        printf("*** The correct answer was %c: %s\n", correct_answer, answer);
+        printf("*** The correct answer was %c: %s\n", (char)('A' + q->correct_answer_index), q->answers[q->correct_answer_index]);
         p->level_index = p->level_index > 0 ? p->level_index - 1 : 0;
         keep_playing = p->last_answer;
         p->last_answer = false;
@@ -530,7 +551,7 @@ int count_answers(game_question * q)
     return count;
 }
 
-void remove_answers(game_question * q, int correct_index, short number_of_answers_to_remove)
+void remove_answers(game_question * q, short number_of_answers_to_remove)
 {
     int r = 0, already_removed = -1;
 
@@ -539,7 +560,7 @@ void remove_answers(game_question * q, int correct_index, short number_of_answer
         r = rand_number();
 
         // don't remove the correct answer
-        if ( r != correct_index && r != already_removed )
+        if ( r != q->correct_answer_index && r != already_removed )
         {
             for (short i = 0; i < 4; i++)
             {
@@ -554,10 +575,10 @@ void remove_answers(game_question * q, int correct_index, short number_of_answer
     }
 }
 
-void use_joker(Player * p, game_question * q, char * correct_answer)
+void use_joker(Player * p, game_question * q)
 {
     char buffer[40];
-    int buffer_n, correct_index = 3 + (*correct_answer - 'D');
+    int buffer_n;
 
     fgets(buffer, 40, stdin);
     trim_new_line(buffer);
@@ -571,7 +592,7 @@ void use_joker(Player * p, game_question * q, char * correct_answer)
         return;
     }
 
-    remove_answers(q, correct_index, buffer_n == 50 ? 2 : 1);
+    remove_answers(q, buffer_n == 50 ? 2 : 1);
 
     p->j50 = buffer_n == 50 ? false : p->j50;
     p->j25 = buffer_n == 25 ? false : p->j25;
@@ -629,6 +650,7 @@ void save_game(Player * p, link * questions, game_question * current_question)
     }
     fprintf(file, "CATEGORY=%d\n", current_question->ctg);
     fprintf(file, "DIFFICULTY=%d\n", current_question->diff);
+    fprintf(file, "ANSWER=%d\n", current_question->correct_answer_index);
 
     // All the other questions
     for (aux = *questions; aux != NULL ; aux = aux->next)
@@ -781,7 +803,6 @@ game_question get_question(link * questions, enum difficulty_enum diff)
 
 void flush(link * questions_link)
 {
-    int counter = 0;
     link aux = *questions_link;
     link holder;
 
@@ -790,8 +811,5 @@ void flush(link * questions_link)
         holder = aux->next;
         free(aux);
         aux = holder;
-        counter++;
     }
-
-    printf("Cleaned %d\n", counter);
 }
