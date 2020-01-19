@@ -420,7 +420,7 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool sa
 	}
 
     // DEBUG
-    printf("Found %d questions!\n", question_count);
+    // printf("Found %d questions!\n", question_count);
 
 	fclose(f);
 }
