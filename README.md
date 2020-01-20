@@ -11,17 +11,17 @@ Autor
 
 ## Descrição da Solução
 O programa começa por mostrar o menu, com as seguintes opções:
-* n <nome> -> começar um jogo novo. <nome> é opcional
+* n <<nome>> -> começar um jogo novo. <<nome>> é opcional
 * q -> fecha programa
 * h -> volta a mostrar o menu
-* r <nome_do_ficheiro> -> carrega o ficheiro com o nome fornecido para recomeçar a jogar onde o jogador parou numa sessão anterior
-* s <nome_do_ficheiro> -> guarda um ficheiro com o nome fornecido para guardar a sessão atual
+* r <<nome_do_ficheiro>> -> carrega o ficheiro com o nome fornecido para recomeçar a jogar onde o jogador parou numa sessão anterior
+* s <<nome_do_ficheiro>> -> guarda um ficheiro com o nome fornecido para guardar a sessão atual
 * j <25 ou 50> -> joga um *joker* que remove uma (joker 25) ou duas (joker 50) respostas possíveis
 * c -> mostra os créditos do jogo
 
 Cada *node* da lista de perguntas mantêm o endereço do elemento anterior e do próximo para facilitar o link *patching* ao remover perguntas.
 
-Para manter consistência na randomização de números é guardado um contador de vezes que rand() é chamado. Esse número é guardado no save file e é usado ao carregar o ficheiro.
+Para manter consistência na randomização de números é guardado um contador de vezes que rand() é chamado. Esse número é guardado no *save file* e é usado ao carregar o ficheiro.
 
 ## Estrutura do Software
 ![flowchart](flowchart.png)
