@@ -50,18 +50,17 @@ typedef struct {
 void print_menu(void);
 void print_credits(void);
 void print_player_status(Player *, int);
-int rand_number(void);
-void read_game_file(Player *, char *, link *, bool);
+int rand_number(const int, const int, int *);
+void read_game_file(Player *, char *, link *, bool, int *);
 bool play(Player *, link *, int *, short *);
 int add_question(link *, game_question, int);
 game_question get_question(link *, enum difficulty_enum);
-int rand_number(void);
 void start_new_game(Player *);
-void show_question(game_question *, bool);
+void show_question(game_question *, bool, int *);
 bool handle_player_question_response(Player *, game_question *, int *, char *);
-void use_joker(Player *, game_question *);
-void save_game(Player *, link *, game_question *);
-void load_game(Player *, link *);
+void use_joker(Player *, game_question *, int *);
+void save_game(Player *, link *, game_question *, int, int *);
+void load_game(Player *, link *, int *);
 bool string_starts_with(char *, char *);
 void flush(link *);
 
@@ -70,6 +69,7 @@ int main(int agrc, char **argv)
     char user_input, file_name[100];
     bool player_seed = false, file_provided = false, active = true, playing = false;
     int levels[] = {0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000};
+    int seed, rand_counter = 0;
     short difficulty_level[] = {0, 0, 0, 1, 1, 2, 2, 2};
     Player current_player;
     link questions_link;
@@ -88,7 +88,8 @@ int main(int agrc, char **argv)
                 }
                 else if(argv[i][1] == 's')
                 {
-                    srand(atoi(argv[i + 1]));
+                    seed = atoi(argv[i + 1]);
+                    srand(seed);
                     player_seed = true;
                 }
             }
@@ -97,7 +98,8 @@ int main(int agrc, char **argv)
 
     if(!player_seed)
     {
-        srand(time(NULL));
+        seed = time(NULL);
+        srand(seed);
     }
 
     print_menu();
@@ -128,7 +130,7 @@ int main(int agrc, char **argv)
                 {
                     if (file_provided)
                     {
-                        read_game_file(&current_player, file_name, &questions_link, false);
+                        read_game_file(&current_player, file_name, &questions_link, false, &rand_counter);
                     }
                     else
                     {
@@ -137,7 +139,7 @@ int main(int agrc, char **argv)
                     }
                     start_new_game(&current_player);
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                    show_question(&current_question, true);
+                    show_question(&current_question, true, &rand_counter);
                     playing = true;
                 }
                 break;
@@ -155,7 +157,7 @@ int main(int agrc, char **argv)
                 if (active)
                 {
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                    show_question(&current_question, true);
+                    show_question(&current_question, true, &rand_counter);
                 }
 
                 break;
@@ -163,12 +165,12 @@ int main(int agrc, char **argv)
                 if (!playing)
                     puts(MSG_UNKNOWN);
                 else
-                    use_joker(&current_player, &current_question);
+                    use_joker(&current_player, &current_question, &rand_counter);
                 break;
             case 's':
                     if(playing)
                     {
-                        save_game(&current_player, &questions_link, &current_question);
+                        save_game(&current_player, &questions_link, &current_question, seed, &rand_counter);
                         active = false;
                     }
                     else
@@ -181,10 +183,10 @@ int main(int agrc, char **argv)
                     puts(MSG_UNKNOWN);
                 else
                 {
-                    load_game(&current_player, &questions_link);
+                    load_game(&current_player, &questions_link, &rand_counter);
                     print_player_status(&current_player, levels[current_player.level_index]);
                     current_question = get_question(&questions_link, difficulty_level[current_player.level_index]);
-                    show_question(&current_question, false);
+                    show_question(&current_question, false, &rand_counter);
                     playing = true;
                 }
                 break;
@@ -359,7 +361,7 @@ void write_question(FILE * file, link * last_question, char * question_line, int
     add_question(last_question, working_question, question_count);
 }
 
-void write_player_details(FILE * file, Player * p, char * name_line)
+void write_player_details(FILE * file, Player * p, char * name_line, int * rand_counter)
 {
     char line[256], tmp[128];
 
@@ -397,9 +399,29 @@ void write_player_details(FILE * file, Player * p, char * name_line)
 
         p->last_answer = atoi(tmp);
     }
+
+    if (fgets(line, 256, file) != NULL)
+    {
+        trim_new_line(line);
+        set_value_to_string_after_equal(line, tmp);
+
+        srand(atoi(tmp));
+    }
+
+    if (fgets(line, 256, file) != NULL)
+    {
+        trim_new_line(line);
+        set_value_to_string_after_equal(line, tmp);
+
+        for (short i = 0; i < atoi(tmp); i++)
+        {
+            rand_number(0, 3, rand_counter);
+        }
+    }
+
 }
 
-void read_game_file(Player * p, char * file_name, link * questions_link, bool save_flag)
+void read_game_file(Player * p, char * file_name, link * questions_link, bool save_flag, int * rand_counter)
 {
     unsigned int question_count = 0;
 	char line[256];
@@ -422,7 +444,7 @@ void read_game_file(Player * p, char * file_name, link * questions_link, bool sa
 			}
             else if (string_starts_with(line, "Player_Name") && save_flag)
             {
-                write_player_details(f, p, line);
+                write_player_details(f, p, line, rand_counter);
             }
             else if (string_starts_with(line, "QUESTION"))
             {
@@ -466,28 +488,28 @@ void start_new_game(Player * p)
     print_player_status(p, 0);
 }
 
-void move_correct_answer(game_question * q, int correct_answer_index)
+void move_correct_answer(game_question * q, int index_to_move_it_to)
 {
     char tmp[64];
 
     strcpy(tmp, q->answers[0]);
-    for (short i = 0; i < correct_answer_index; i++)
+    for (short i = 0; i < index_to_move_it_to; i++)
     {
         strcpy(q->answers[i], q->answers[i + 1]);
     }
 
-    strcpy(q->answers[correct_answer_index], tmp);
+    strcpy(q->answers[index_to_move_it_to], tmp);
 }
 
-void show_question(game_question * q, bool shuffle_correct_answer)
+void show_question(game_question * q, bool shuffle_correct_answer, int * rand_counter)
 {
     int correct_answer_index = 0;
 
     if (shuffle_correct_answer)
     {
-        correct_answer_index = rand_number();
-        move_correct_answer(q, correct_answer_index);
+        correct_answer_index = rand_number(0, 3, rand_counter);
         q->correct_answer_index = correct_answer_index;
+        move_correct_answer(q, correct_answer_index);
     }
 
     printf("*** Question: %s\n", q->question);
@@ -518,18 +540,18 @@ bool handle_player_question_response(Player * p, game_question * q, int * levels
         p->last_answer = false;
     }
 
+    if (keep_playing)
+    {
+        print_player_status(p, levels[p->level_index]);
+    }
+    
     // player wins
     if (p->level_index == 8)
     {
         puts(MSG_YOUWIN);
-        printf("*** Congratulations %s\n", p->name);
+        printf("*** Congratulations %s!\n", p->name);
         keep_playing = false;
     }
-    else
-    {
-        print_player_status(p, levels[p->level_index]);
-    }
-
 
     if (!player_is_correct && !keep_playing)
     {
@@ -552,16 +574,41 @@ int count_answers(game_question * q)
     return count;
 }
 
-void remove_answers(game_question * q, short number_of_answers_to_remove)
+void move_answer(game_question * q)
+{
+    char tmp[128], holder[128];
+
+    strcpy(tmp, q->answers[q->correct_answer_index]);
+
+    for (short i = 0; i < q->correct_answer_index; i++)
+    {
+        if (i > 0)
+        {
+            strcpy(q->answers[i + 1], holder);
+            strcpy(holder, q->answers[i]);
+        }
+        else
+        {
+            strcpy(holder, q->answers[i + 1]);
+            strcpy(q->answers[i + 1], q->answers[i]);
+        }
+    }
+    
+    strcpy(q->answers[0], tmp);
+}
+
+void remove_answers(game_question * q, short number_of_answers_to_remove, int * rand_counter)
 {
     int r = 0, already_removed = -1;
 
+    move_answer(q);
+
     while ( number_of_answers_to_remove > 0 )
     {
-        r = rand_number();
+        r = rand_number(1, 3, rand_counter);
 
         // don't remove the correct answer
-        if ( r != q->correct_answer_index && r != already_removed )
+        if ( r != already_removed )
         {
             for (short i = 0; i < 4; i++)
             {
@@ -574,9 +621,11 @@ void remove_answers(game_question * q, short number_of_answers_to_remove)
             }
         }
     }
+
+    move_correct_answer(q, q->correct_answer_index);
 }
 
-void use_joker(Player * p, game_question * q)
+void use_joker(Player * p, game_question * q, int * rand_counter)
 {
     char buffer[40];
     int buffer_n;
@@ -593,19 +642,15 @@ void use_joker(Player * p, game_question * q)
         return;
     }
 
-    remove_answers(q, buffer_n == 50 ? 2 : 1);
+    remove_answers(q, buffer_n == 50 ? 2 : 1, rand_counter);
 
     p->j50 = buffer_n == 50 ? false : p->j50;
     p->j25 = buffer_n == 25 ? false : p->j25;
 
-    for (short i = 0, k = 65; i < 4; i++, k++)
-    {
-        if (strlen(q->answers[i]) > 0)
-            printf("*** %c: %s\n", (char)k, q->answers[i]);
-    }
+    show_question(q, false, rand_counter);
 }
 
-void load_game(Player * p, link * questions_link)
+void load_game(Player * p, link * questions_link, int * rand_counter)
 {
     char file_name[40];
 
@@ -613,11 +658,13 @@ void load_game(Player * p, link * questions_link)
     trim_new_line(file_name);
     trim_leading_white_space(file_name);
 
-    read_game_file(p, file_name, questions_link, true);
+    // reset rand counter
+    *rand_counter = 0;
+    read_game_file(p, file_name, questions_link, true, rand_counter);
     printf("***  Ok %s, where were we? Oh there you go:\n", p->name);
 }
 
-void save_game(Player * p, link * questions, game_question * current_question)
+void save_game(Player * p, link * questions, game_question * current_question, int seed, int * rand_counter)
 {
     FILE * file;
     char file_name[40];
@@ -641,6 +688,8 @@ void save_game(Player * p, link * questions, game_question * current_question)
     fprintf(file, "Player_J50=%d\n", p->j50);
     fprintf(file, "Player_J25=%d\n", p->j25);
     fprintf(file, "Player_Last_Question=%d\n", p->last_answer);
+    fprintf(file, "Player_Seed=%d\n", seed);
+    fprintf(file, "Player_Rand_Counter=%d\n", *rand_counter);
 
     // Current question
     fputs(";Questions\n", file);
@@ -669,9 +718,16 @@ void save_game(Player * p, link * questions, game_question * current_question)
     fclose(file);
 }
 
-int rand_number(void)
+int rand_number(const int min, const int max, int * rand_counter)
 {
-    return (rand() % 4);
+	if (max < min)
+	{
+		puts("Max must be larger than Min");
+		exit(0);
+	}
+	int n = abs(max - min) + 1;
+    *rand_counter = *rand_counter + 1;
+	return (rand() % n) + min;
 }
 
 void print_player_status(Player * p, int level)

@@ -12,7 +12,9 @@
           "program": "${fileDirname}/${fileBasenameNoExtension}.exe",
           "args": [
               "-f",
-              "questions.ini"
+              "questions.ini",
+              "-s",
+              "25"
           ],
           "stopAtEntry": false,
           "cwd": "${workspaceFolder}",
