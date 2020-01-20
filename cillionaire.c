@@ -193,10 +193,11 @@ int main(int agrc, char **argv)
                 break;
         }
 
-        if (!active && playing)
-            flush(&questions_link);
+        // if (!active && playing)
+        //     flush(&questions_link);
     }
 
+    exit(0);
 }
 
 void trim_new_line(char * s1)
